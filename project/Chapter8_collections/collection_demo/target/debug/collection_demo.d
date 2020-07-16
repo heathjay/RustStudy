@@ -1,0 +1,1 @@
+/Users/chengpengjiang/Documents/coding/Rust/project/Chapter8_collections/collection_demo/target/debug/collection_demo: /Users/chengpengjiang/Documents/coding/Rust/project/Chapter8_collections/collection_demo/src/main.rs

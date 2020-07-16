@@ -1,0 +1,1 @@
+/Users/chengpengjiang/Documents/coding/Rust/project/Chapter7_package_crate/package_demo/target/debug/package_demo: /Users/chengpengjiang/Documents/coding/Rust/project/Chapter7_package_crate/package_demo/src/main.rs /Users/chengpengjiang/Documents/coding/Rust/project/Chapter7_package_crate/package_demo/src/sound.rs
