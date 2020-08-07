@@ -478,3 +478,222 @@ fn read_username_from_file() -> Result<String, io::Error> {
     f.read_to_string(&mut s)?;
     Ok(s)
 }
+## 何时panic？
+- 示例、代码原型和测试都非常适合panic
+
+# 范型\trait和生命周期
+## generics
+- 具体类型或者其他属性的抽象替代，
+### 函数定义
+- 函数名称和参数列表之间的尖括号<>
+fn largest<T>(list:&[T]) -> T //T 类型的slice
+### 结构体中泛型定义
+struct Point<T>{
+
+}
+### 方法泛型定义
+impl<T> Point<T>{}
+- 必须在impl之后声明一个T,这样就可以在point<T>上实现的方法中引用他，rust知道point的尖括号里面的类型是泛型而不是具体的值类型
+### 枚举泛型
+enum Option<T>{}
+## trait
+- 定义范型行为的方法，可以结合来将泛型限制为拥有特定行为的类型，而不是任意类型
+- 定义共享的行为：特定类型可能拥有与其他类型共享的功能
+pub trait Summary{
+    fn summarize(&self) -> String;
+}
+- 一行一个方法名并且以分号结尾
+impl Summary for name_struct{}
+- 限制：
+    - 只有当trait或者要实现trait的类型位于crate的本地作用域时，才能为该类型实现trait
+- 可以有默认实现:进行保留或者重载
+### trait 作为参数
+- 定义一个函数调用其参数上的某个trait定义的方法
+pub fn notify(item: impl Summary){
+    println!("{}", item.summarize());
+}
+- 可以是任何类型，只要实现了trait，多态
+- 可以结合范型, T: trait
+pub notify<T: Summary>(item: T){
+
+}
+- 多个trait实现
+pub fn notify(item: impl Summary + Display)
+pub fn notify<T: Summary+Dislay>(item:T)
+    - 加入where可以进行简化
+pub fn some_function<T: Display + Clone, U: Clone + Debug>(t:T, u: U) -> i32
+pub fn some_function<T,U>(t:T, u:U) ->i32 where T: Display+Clone,
+                                                U: Clone + Debug
+### trait bound 有条件实现方法
+
+### 返回实现trait类型
+fn return_function() -> impl Summary{}
+
+## lifetimes:
+- 向编译器提供引用如何相互关联的泛型
+- 允许在很多场景下借用值的同时仍然使编译器能够检查这些引用的有效性
+- 有一个借用检查器
+    - 定义函数的时候，并不知道传递给函数的具体值，所以也不知道到底是if还是else会被执行，如果输入没有生命周期，rust无法判断
+### 生命周期注解语法
+- 生命周期注解并不改变任何引用的生命周期的长短，与当函数生命中指定了泛型类型参数后就可以接受任何类型一样，当指定了泛型生命周期后函数也能接受任何生命周期的引用
+- 描述了多个引用生命周期互相的关系，而不影响其生命周期
+- '进行影响，放在&之后
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+- 防止悬挂
+### 结构体定义的生命周期注解
+- 我们将定义包含引用的结构体，不过者需要为结构体定义中的每一个引用添加生命周期注解。
+struct ImportantExcerpt<'a>{
+    part: &'a str,
+}
+fn main(){
+    let novel = String::from("call me ismmm");
+    let first_sentence = novel.split('.')
+        .next()
+        .expect("dould not find a ");
+        let i = ImportantExcerpt{part: first_sentence};
+}
+### 生命周期省略规则
+- 编译器会考虑，如果代码符合这些规则，就无需明确指定生命周期注解
+1. 输入生命周期
+    - 每一个引用的参数都有他自己的生命周期参数，两个就有两个
+2. 输出生命周期
+    - 只有一个输入生命周期参数，那么他被赋予所有输出生命周期参数
+    - 如果方法有多个输入生命周期并且其中一个参数是&self 或者&mut self 说明这是一个对象的方法。那么所有输出生命周期参数被赋予self的生命周期
+
+### 方法定义中的生命周期注解
+impl<'a> ImportantExcerpt<'a> {
+    fn level(&self) -> i32 {
+        3
+    }
+}
+- impl 之后和类型米ingcheng之后的生命周期参数是必要的，不过因为第一条生命周期规则我们并不必须标注self引用的生命周期
+impl<'a> ImportantExcerpt<'a> {
+    fn announce_and_return_part(&self, announcement: &str) -> &str {
+        println!("Attention please: {}", announcement);
+        self.part
+    }
+}
+### 静态生命周期 'static
+存活整个程序期间,
+### 联合trait、生命周期、泛型
+use std::fmt::Display;
+fn longest_with_an_announcement<'a, T>(x: &'a str, y: &'a str, ann: T) -> &'a str
+    where T: Display{
+        println!("jsisjis");
+        if x.len() > y.len(){
+            x
+        }else{
+            y
+        }
+}
+
+# 编写测试程序cargo test
+1. 设置任何所需要的数据或者状态
+2. 运行需要测试的代码
+3. 断言其结果是我们所期望的
+
+test属性，宏方法，should_panic属性
+- 新建一个库项目，她会自动生成一个测试模块和一个检测函数
+- cargo new adder --lib
+#[cfg(test)]
+mod tests{
+    #[test]
+    fn it_works(){
+        assert_eq!(2+2,4);
+    }
+}
+- cargo test
+## assert!宏来检查结果
+#[derive(Debug)]
+struct Rectangle{
+    width:u32,
+    height:u32,
+}
+
+impl Rectangle{
+    fn can_hold(&self, other: &Rectangle) -> bool{
+        slef.width > otehr.width && self.height > other.height
+    }
+}
+#[cfg(test)]
+mod tests{
+    use super::*;
+    #[test]
+    fn larget_can_hold_smaller(){
+        let larger = Rectangle{width:8, height : 7};
+        let smaller = Rectangle{width: 5, height : 1};
+        assert!(larger.can_hold(&smaller));
+    }
+}
+## assert_eq!和 assert_ne!
+- assert!可以打印更加有用的信息
+assert!(
+    result.contains("Carol"),
+    "Greeting did not contain name, value was `{}`", result
+);
+
+## should_panic 检查panic
+#[cfg(test)]
+mod tests{
+    use super::*;
+    #[test]
+    #[should_panic(expected = "Guess value must be less than or equal to 100")]
+    fn greater_than_100(){
+        Guess::new(200);
+    }
+}
+## Result<T,E> 用于测试
+#[cfg(test)]
+mod tests{
+    #[test]
+    fn it_works() -> Result<(),String>{
+        if 2 + 2 == 4{
+            Ok(())
+        }else{
+            Err(String::from("two plus two does not equal four"))
+        }
+    }
+}
+- 不能对这些使用Result的测试使用should_panic注解，
+## 控制test
+1. 运行多个测试时，Rust默认使用线程来并行运行，这意味着测试会更快地运行完成。
+cargo test -- --test-threads=1
+2. 显示输出
+cargo test -- --nocapture
+3. 指定名字来运行部分测试
+- 过滤精确： cargo test 全名
+- 部分过滤: cargo test 公有
+4. 忽略某些测试
+- #[ignore]
+- 希望只运行一个ignore cargo test -- --ignored
+
+## 测试的组织结构
+1. 单元测试
+    - 隔离环境，测试一个模块
+    - 每个文件中创建包含测试函数的tests模块，并使得cfg(test)标注模块
+
+2. 集成测试
+- 集成测试对于你需要测试的库完全是外部的，同其他使用库的代码一样使用库文件。
+- 需要创建一个tests目录，新建一个文件
+- 需要在文件顶部添加use 原目录下的crate
+- 不需要将任何一个代码标注为#[cfg(test)]，
+- Cargo test --test 某个继承测试文件中的所有测试
+
+3. 集成测试中的子模块
+    - 每一个集成测试文件都是一个单独的crate
+    - 不让一个common出现在测试结果中，建立一个tests/common/mod.rs文件
+    - tests目录中的子目录不会被当作单独的crate编译或作为一个测试结果部分出现在测试输出中
+    - 一旦拥有了tests/common/mod.rs，就可以将其作为模块以便在任何集成测试文件中使用，
+    use adder;
+    mod common;
+    #[test]
+    fn it_adds_two() {
+        common::setup();
+        assert_eq!(4, adder::add_two(2));
+    }
