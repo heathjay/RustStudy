@@ -887,4 +887,87 @@ pub trait Iterator{
 
 
 ## 迭代器是Rust的零成本抽象zero-cost abstractions
-- 
+
+
+# 进一步认识cargo 和 crate.io
+## 采用发布配置自定义构建
+- 在rust发布配置是预定义的、可定制的带有不同选项的配置
+- cargo build 采用dev配置和运行cargo build --release 的release配置，dev配置被定义为开发时的好的默认配置，release配置则有良好的发布构建的默认配置
+- 当cargo.toml文件中没有任何[profile.*]部分的时候，cargo会对每一个配置使用默认设置，通过增加爱任何希望定制的配置对应的profile.*部分，我们可以选择覆盖任意默认设置的子集。默认:
+[profile.dev]
+opt-level = 0
+[profile.release]
+opt-level = 3
+
+0-3 优化级别，发布模式用更长的便一时间换取运行更快的代码3
+## 将crate发布到crates.io
+- 编写有用的文档注释
+生成html文件。展示api文档
+///markdown
+///# example
+///
+///
+///```
+///
+///let arg = 5;
+///let answer = my_crate::add_one(arg);;
+///assert_eq!(4,answer);
+///```
+///
+pub fn add_one(x:i32)->i32{
+    x+1
+}
+- cargo doc 生成：rustdoc
+- panics!  /  errors /  safety
+
+### 文档注释作为测试
+- 增加示例代码块是一个清除表明怎么使用库方法。
+- cargo test也会向测试那样运行文档中的代码
+### 注释包含项的结构
+//! 这为包含注释的项，而不是位于注释之后的项增加文档，通常用于crate根文件src/lib
+文件名src/lib.rs
+//! # My Crate
+//!
+//! `my_crate` 是一�使得��计算更�便的
+//! 工具集合
+
+### 使用pub use 导出和时的公有api
+- 多层次的分层结构，不过这对于用户来说不方便，
+use my_crate::some_module::another_module::UsefulType;
+use my_crate::UsefulType;
+
+- 可以使用pub use 重新导出re-export项来使公有结构不同于私有结构，重导获取位于一个位置的公有项目并将其公开到另一个位置。
+//! # Art
+//!
+//! 一个描述美术信息的库
+pub mod kinds {
+/// 采用 RGB 色彩模式的主要颜色
+pub enum PrimaryColor {
+Red,
+Yellow,
+Blue,
+}
+/// 采用 RGB 次要颜色
+pub enum SecondaryColor {
+Orange,
+Green,
+Purple,
+}
+}
+pub mod utils {
+use crate::kinds::*;
+/// 等量的混合两个主要颜色
+/// 来创建一个次要颜色。
+pub fn mix(c1: PrimaryColor, c2: PrimaryColor) -> SecondaryColor {
+// --snip--
+}
+}
+
+main.rs
+use art::kinds::PrimaryColor;
+use art::utils::mix;
+fn main() {
+    let red = PrimaryColor::Red;
+    let yellow = PrimaryColor::Yellow;
+    mix(red, yellow);
+}
