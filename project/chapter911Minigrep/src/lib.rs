@@ -6,7 +6,7 @@ pub struct Config{
     pub filename: String,
     pub case_sensitive: bool,
 }
-
+/*
 impl Config{
     pub fn new(args:&[String]) -> Result<Config, &'static str>{
         //错误信息进行修复
@@ -20,7 +20,28 @@ impl Config{
         Ok(Config{query,filename,case_sensitive})
     }
 }
+*/
 
+//进行改进
+//有所有权的迭代器作为参数而不是借用slice。
+//我们将使用迭代器功能之前检查slice长度和索引特定位置的代码，这会明确Config::new的工作因为迭代器会负责访问这些值
+impl Config{
+    pub fn new(mut args: std::env::Args) -> Result<Config, &'static str>{
+        args.next();
+        let query = match args.next(){
+            Some(arg) => arg,
+            None => return Err("didnot get a query string."),
+        };
+
+        let filename = match args.next(){
+            Some(arg) => arg,
+            None => return Err("didnot get a file name"),
+        };
+
+        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
+        Ok(Config{query, filename, case_sensitive})
+    }
+}
 pub fn run(config:Config) -> Result<(),Box<dyn Error>>{
     //省略错信息
     let contents = fs::read_to_string("poem.txt")?;
@@ -35,7 +56,7 @@ pub fn run(config:Config) -> Result<(),Box<dyn Error>>{
     }
     Ok(())
 }
-
+/*
 pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str>{
     let mut results = Vec::new();
     for line in contents.lines(){
@@ -45,7 +66,11 @@ pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str>{
     }
     results
 }
+*/
 
+pub fn search<'a>(query: &str, contents:&'a str) -> Vec<&'a str>{
+    contents.lines().filter(|line| line.contains(query)).collect()
+}
 pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str>{
     let query = query.to_lowercase();
     let mut results = Vec::new();
