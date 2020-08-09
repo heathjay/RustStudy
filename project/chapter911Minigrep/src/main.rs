@@ -5,7 +5,7 @@ use std::process;
 
 use chapter911Minigrep::Config;
 fn main() {
-    let args:Vec<String> = env::args().collect();
+
     
    //let config = parse_config(&args);
    /*panic
@@ -17,9 +17,8 @@ fn main() {
     println!("with test:{}", contents);
     */
 
-    let config = Config::new(&args).unwrap_or_else(|err|{
-        //println!("problem parsing arguments : {}", err);
-        eprintln!("problem parsing arguments : {}", err);
+    let config = Config::new(env::args()).unwrap_or_else(|err| {
+        eprintln!("Problem parsing arguments: {}", err);
         process::exit(1);
     });
     //println!("searching for {}", config.query);
