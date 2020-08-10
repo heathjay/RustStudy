@@ -971,3 +971,88 @@ fn main() {
     let yellow = PrimaryColor::Yellow;
     mix(red, yellow);
 }
+
+//不方便：
+增加到lib.rs
+//!#Art
+//!
+//!一个描述美术信息的库
+pub use self::kinds::PrimaryColor;
+...
+
+在mian.rs
+use art::PrimaryColor
+
+## 注册一个crates.io账号
+cargo login
+- 发布前需要在cargo.toml文件的[package]部分增加一些本crate的元信息metadata
+- crate 需要一个唯一的名称。先到显得
+[package]
+name = "first_wins"
+license = "MIT" // 必须要有一个license表示，或者license-file Apache-2.0
+version =
+authors =
+edition = 
+description = 
+
+## 发布时永久性的，不能删除和覆盖
+cargo publish
+- 可以进行撤回cargo yank - 阻止被人引用。
+
+# Cargo工作空间
+- 构建一个包含二进制crate和库crate包，随着项目开发的深入，库crate持续增大，希望将其进一步拆分成多个库crate，对于这个，提供了工作空间的功能
+- 帮助开发管理多个协同开发的包
+
+## 创建工作空间
+- 工作空间是一系列共享同样的Cargo.lock和输出目录的包。
+- 举例：我们工作空间有一个二进制项目和两个库，二进制项目会提供主要功能，并会依赖另外两个库。
+- 一个提供add_one方法而第二个会提供add_two方法，这三个crate将会是相同工作空间的一部分。
+mkdir add
+cd add
+创建cargo.toml文件，会以[workspace]部分作为开始，并通过指定adder的路径来为工作空间增加成员。
+[workspace]
+members = [
+    "adder",
+]
+接下来，在add目录下运行cargo new新建adder二进制crate:
+cargo new adder
+|
+|----Cargo.lock
+|----Cargo.toml
+|----adder
+|       |
+|       |--Cargo.toml
+|       |--src
+|           |---main.rs
+|----target
+adder没有自己的target目录，在顶级空间上有，进入adder运行cargo build 构建也会在add/target中而不是add/adder/target
+- 在工作空间中创建第二个crate
+[workspace]
+members=[
+    "adder",
+    "add-one",
+]
+cargo new add-one --lib
+文件名: add-one/src/lib.rs
+pub fn add_one(x:i32)->i32{
+    x+1
+}
+- 现在空间里有了一个crate。让adder依赖库crate add-one首先需要在adder/Cargo.toml增建路径：
+[dependencies]
+add-one = {path = "../add-one"}
+- 然后在adder/src/main.rs
+use add_one;
+- 在add目录中可以直接巡幸cargo build
+- 运行的cargo run -p adder
+## 在功过空间中依赖外部crate
+- 工作空间只有在根目录有一个Cargo.lock而不是在每一个crate目录下都有Cargo.lock，确保相同版本的依赖
+如果在cargo.toml和add-one/Cargo,toml增加rand,解析为统一版本并记录到唯一的Cargo.lock中
+- 在add-one/Cargo.toml增加[dependencies]部分增加rand crate一边能在crate中使用
+- 需要的crate中增加这个dependencies
+## cargo test
+- 全部测试
+- 也可以指定
+cargo test -p add-one
+## cargo publish
+- 需要进入每一个分别的crate进行publish
+## cargo install安装二进制文件
