@@ -1287,3 +1287,125 @@ let y = &mut x;
         - 如果父节点被丢弃了，其子节点也应该被丢弃，然而这个子节点不应该包含父节点
         - 如果子节点丢弃，父节点仍然存在，这就是弱引用
         - RefCell<Weak<Node>>
+
+# 无畏并发
+- 并发编程：程序的不同部分相互独立执行，concurrent programming
+- 并行编程：程序不同部分同时执行，parallel programming
+- 所有权和类型系统是解决内存安全和并发问题的工具fearless concurrency
+包括
+    - 如何创建线程来同时运行多段代码
+    - 消息传递message passing， 其中通道channel被用来传递消息
+    - 共享状态shared state,其中多个线程可以访问同一片数据
+    - Sync和Send trait， 将并发保证扩展到用户定义的以及标准库提供的类型中
+
+## 使用线程同时运行代码
+- 已执行程序的代码在一个进程中process，程序内部可以拥有多个同时运行的独立部分，运行这些独立部分的功能被成为线程
+- 问题：
+    - race condition，多个线程以不一致的顺序访问数据或者资源
+    - deadline：两个线程互相等待对象停止使用其所拥有的数据或者资源，这会组织他们继续运行
+    - 指挥发生在特定情况且难以稳定重现和修复的bug
+- 编程语言提供的线程被称为绿色green线程，使用绿色线程的语言会在不同数量的os线程的上下文执行他们，称为M:N模型，
+- Rust是较为底层语言，只提供1：1
+## 使用spawn创建新线程
+- thread::spawn函数并传递一个闭包，并在其中包含希望在新线程运行的代码，
+
+## 使用join等待所有线程结束
+- 可以通过thread::spawn的返回值存储在变两种来修复新建线程部分没有执行或者完全没有执行的问题
+- thread::spawn的返回值类型是JoinHandle,是一个拥有所有权的值，当对其调用join方法的时候，他会等待线程结束
+- 阻塞当前线程，知道handle代表的线程结束
+- join放在不同的地方会影响线程
+## 线程和move闭包
+- 允许我们在一个线程中使用另一个线程的数据
+- 创建爱你新线程将值的所有权从一个线程转移到另一个ie线程
+    let handle = thread::spawn(||{
+        for i in 1..10{
+            println!("hi number {} from the spawned thread", i);
+            thread::sleep(Duration::from_millis(1));
+        }
+    });
+    - 闭包没有参数传入
+- rust不知道这个线程会执行多久，无法知道引用是否一直有效
+- 在闭包之前增加move关键字，我们强制闭包获取其使用的值的所有权，而不是任由rust推断他应该借用值
+
+## 使用消息传递在线程间传送数据
+- 不要通过共享内存来通讯，通过通讯来共享内存
+- channel
+- 一个发送者transmitter和一个接受者receiver
+- 任意一个被丢弃了就可以认为通道被关闭
+    let (tx, rx) = mpsc::channel();
+- 多个发送一个接受
+- send方法返回一个result类型，将没有发送值的目标所以发送操作会返回错误unwrap产生panic
+- 接收端有两个方法，一个recv和try_recv。这个会阻塞朱线程执行直到从通道接受一个值，一旦发送了一个值，recv会一个result中返回。当通道关闭就返回一个错误
+- try_recv不会阻塞，立刻返回一个result:ok包含可用的信息，err代表没有任何信息
+
+## 通道与所有权转移
+- 尝试在新建线程中的通道中发送完val值之后再使用它，不可以
+- send 函数获取其参数的所有权并移动这个值归接受者所有，防止发送后再次意外地使用这个值，所有权系统检查一切是否合乎规则
+
+## 发送多个值并观察接受者的等待
+- 新建线程现在会发送多个消息并在每个消息之间暂停一秒钟
+thread::spawn(move ||{
+        let vals = vec![
+            String::from("hi"),
+            String::from("from"),
+            String::from("the"),
+            String::from("thread"),
+            
+            ];
+
+        for val in vals{
+            tx.send(val).unwrap();
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
+    for received in rx{
+        println!("got : {}", received);
+    }
+- 不再显式调用recv函数：而是将rx当作一个迭代器，对于每一个接收到的值我们将他打印出来，当通道被关闭时，每一行都会暂停一秒
+
+
+## 通过克隆发送者来创建多个生产者
+- mspc:multiple producer, single consumer
+  let tx1 = mpsc::Sender::clone(&tx);
+- 一个可以传递给第一个新建线程的发送端句柄，我们将原始的通道发送端传递给第二个新建线程。
+## 共享状态并发
+- 消息传递是一个很好的处理并发的方式
+- 但不是唯一一个
+- 某种程度上，通道类似于单所有权，一旦将一个值传送到通道中，将无法再使用这个值
+- 共享内存类似于多个所有权，多线程可以同时访问相同的内存位置，
+### 互斥一个线程访问数据
+- mutex
+- 线程首先需要通过获取互斥的锁来表明其希望访问数据，锁是一个作为互斥一部分数据结构
+- new创建一个mutex，使用lock方法锁
+- lock返回一个MutexGuard的智能指针
+- 实现了Deref指向内部数据，提供了一个Drop实现当MutexGuard离开作用嗯与自动释放
+
+### 线程间共享Mutex
+- 多线程和多所有权
+- 尝试使用智能指针Rc<T>来创建计数的值，以便拥有多个所有者。
+- Rc不能安全的在线程间共享，并没有clone
+- 类似与Rc，但具有原子性Arc<T>
+atomic/ atomically reference counterd
+
+    let counter = Arc::new(Mutex::new(0));
+    let counter = Arc::clone(&counter);
+                let mut num = counter.lock().unwrap();
+                *num += 1;
+     println!("result:{}", *counter.lock().unwrap());
+- counter 不可变，但是可以获取他内部值的可变引用，就像cell一样
+- 可能会造成死锁
+
+
+### 使用sync和Send trait的可扩展并发
+- 以上都是标准库api，
+- 我们可以自己编写自己的或者使用别人编写的并发功能
+- std::marker sync和send trait
+- 通过send可以实现所有权的转移
+- 几乎所有rust类型都是send trait有些例外：Rc
+- Sync 允许多线程访问
+    - 对于任意类型T，如果&T时send的话，T就是sync的，意味着他引用就可以安全的发送给另一个程序
+    - Rc和RecCell不是sync
+    - 手动实现send和sync时不安全的，
+- 通常需要crate，
+
