@@ -1165,3 +1165,125 @@ impl<T> Deref for MyBox<T>{
 - 自动插入
 - 指定在值离开作用域时应该执行的代码的方式时实现Drop trait,
 - drop方法，获取self的可变作用，
+- drop trait 并提供了一个调用println!的drop方法实现，drop函数体是放置任何当类型实例离开作用域时期望运行的逻辑的地方。
+- std::mem::drop提早丢弃值，不能禁用drop这个功能，整个drop的意义在于其自动处理，有时候提早清理某个值
+- c.drop()
+- 析构函数，对应创建实例的构造函数。
+- rust不能显式调用drop，因为rust早在main结尾的时候自动调用drop会有double free错误
+
+## Rc<T>引用计数智能指针
+- 启用多所有权，因为大部分情况下所有权是明确的，
+- Rc<T> 其名字叫做引用计数reference counting，引用次数，意味着记录一个值引用的数量来知晓这个值是否仍在被使用，
+- 如果某个值有0个引用，就代表没有任何有效引用并可以被清理
+- Rc<T> 用于当我们希望在堆上分配一些内存给程序的多个部分读取，而无法在编译时确定程序的哪一部份会最后结束使用他的时和，
+- 只能用于单线程
+### Rc<T>共享数据
+- 希望创建两个共享第三个所有权列表，
+- b:3->a:5->19
+- c:4->a:5
+- 共享a所有权
+- cons list ： Box
+    let a = Cons(5,
+        Box::new(Cons(10,
+        Box::new(Nil)))
+    );
+
+    let b = Cons(3, Box::new(a));
+    //Cons成员拥有其存储的数据，所以当创建b列表时，a被移动到了b这样b就拥有a
+    //可以改变Cons的定义来存放一个引用，不过接着必须指定生命周期参数。通过指定生命周期参数，表明列表中的每一个元素都至少与列表本身存在的一样久。
+    let c = Cons(4,Box::new(a));
+- 准备修改List定义为使用Rc<T>替代Box<T>。现在每一个Cons变量都包含一个值和一个指向List的Rc<T>
+- 当创建b时，不同于获取a的所有权，这里会克隆a包含的Rc<List>这会将引用计数1增加到2
+- 每次调用Rc::clone。数据的引用
+enum List{
+    Cons(i32, Rc<List>),
+    Nil
+}
+use std::rc::Rc;
+let a = Rc::new(Cons(5,Rc::new(10., Rc::new(Nil))));
+let b = Cons(3,Rc::clone(&a));//Rc::clone不做深度拷贝，只是增加计数
+let c = Cons(4, Rc::clone(&a));
+
+
+## RefCell<T> 和内部可变形模式
+- 内部可变形interior mutability设计模式
+- 即使在不可变引用时也可以改变数据，
+- 该模式在数据结构中使用unsafe代码来模糊rust可变性和借用规则，
+### RefCell<T> 在运行时检查借用规则
+- RefCell<T>代表其数据的唯一的所有权，
+- 借用规则：
+    - 在任意时刻，只能拥有一个可变引用或者任意数量的不可变引用之一（而不是两者）
+    - 引用必须总是有效的
+- Box<T>借用规则的不可变性作用于编译时，
+- RefCell<T>这些不可变形作用于运行时，panic，当你确定代码遵守和借用规则，但是编译器不能理解和确定的时候
+- Rc<T>允许相同数据有多个所有者；box和refcell有单一所有者
+- box允许在编译时执行不可变或可变借用检查，Rc仅允许在编译时执行不可变借用检查，refcell允许在运行时执行不可变或者可变借用检查
+- 因为refcell允许在运行时执行可变借用检查，所以我们可以在即便RefCell自身不可变的情况下修改其呢逆不知
+let x = 5;
+let y = &mut x;
+// 会有编译错误，推论当有一个不可变的值，不能可变地
+- 然而在特定情况下，令一个值在其方法内部就能修改自身，而在其他代码中仍然视为不可变，是有用的
+- mock对象
+    - 测试替身test double是一个通用的编程概念，他代表一个在测试中代替某一个类型的类型，mock对象是特定类型的测试替身，
+    - 记录与最大值的差距。
+
+- 在运行时记录借用
+    - 当创建不可变和可变引用时，分别使用&和&mut语法，对于RefCell<T>来说，则是borrow和borrow_mut
+    - 返回RefMut类型的只能指针。都实现了Deref所以可以当作常规引用对待
+    - RefCell<T>记录当前有多少个活动的Ref<T>和RefMut<T>安全API的一部分。
+    - borrow返回的时Ref<T>类型的智能指针，borrow_mut方法返回RefMut类型的智能指针，这两个类型都是县了Deref。所以都可以当作常规引用对待
+    - 每次调用borrow, RefCell将活动的不可变借用计数加一，当Ref值李离开作用域时，不可变借用计数减1。
+    - RefCell在任何时和只允许多个不可变借用或者一个可变借用
+    - RefCell的实现会在运行时出现panic
+    - 在运行时捕获借用错误而不是编译时意味着将会在开发过程的后期才会发现错误，甚至有可能发布到生产环境才发现，
+
+### 结合Rc和RefCell来拥有多个可变数u所有者
+- Rc允许对相同数据有多个所有者，不过只能提供数据的不可变访问。
+- 如果有一个存储了RefCell和Rc的话，就可以得到有多个所有者并且可以修改的值
+- 创建一个Rc<RefCell<i32>>实例并存储存在变量value中以便之后直接访问，
+- 接着在a中包含value的cons成员创建了一个list,需要克隆value 以便a和value都能拥有其内部5的所有权，而不是将所有权从value 转移到a或者让a借用value.
+- value调用了borrow_mut返回智能指针，可以对其使用解引用运算符并修改其内部值
+- 表面上不可变的list，不过可以使用RefCell中提供内部可变的方法在需要时修改数据，免于出现数据竞争。
+- 比如Cell类似于RefCell但有一点除外：它并非提供内部值的引用。而是将值拷贝进和拷贝出Cell。还有Mutex。其提供线程间安全的内部可变性
+
+### 引用循环与内存泄漏
+- Rust的内存安全性保证使其难以意外地制造永远不会被清理的内存，内存泄漏memory leak
+- 与在编译时拒绝数据竞争不同，并不保证完全地避免内存泄漏。创建引用循环的可能性是存在的。
+- 制造引用循环
+    - 一个存放RefCell的cons list定义，这样可以修改Cons成员所引用的数据
+    - List定义的另一种变体，RefCell<Rc<List>>,这意味着不能像上面那样修改i32的值，我们希望能够修改Cons成员指向的List。这里还增加一个trait方法来方便我们来访问
+     let a = Rc::new(Cons(5, RefCell::new(Rc::new(Nil))));
+    println!("a initial rc count = {}", Rc::strong_count(&a));
+    println!("a next item = {:?}", a.tail());
+
+    let b = Rc::new(Cons(10, RefCell::new(Rc::clone(&a))));
+    println!("a rc count after b creation = {}", Rc::strong_count(&a));
+    println!("b initial rc count = {}", Rc::strong_count(&b));
+    println!("b next item {:?}", b.tail());
+
+    if let Some(link) = a.tail(){
+        *link.borrow_mut() = Rc::clone(&b);
+    }
+
+    println!("b rc count after changing a = {}", Rc::strong_count(&b));
+    println!("a rc count after changing a = {}", Rc::strong_count(&a));
+    - 创建一个引用循环，两个List值互相指向彼此
+    - 变量a中创建一个Rc<List>实例来存放初值5，Nil的list值。解州b存放10和指向列表a的list的另一个Rc
+    - 创建引用循环之后程序立刻结束
+- 避免引用循环:将Rc<T>变成Weak<T>
+    - 也可以通过调用Rc::downgrade并传递Rc<T>实例的引用来创建其值的弱引用weak reference
+    - Rc::downgrade会得到Weak<T>类型的智能指针，不同于将Rc<T>实例的strong_count加1，Rc::downgrade将weak_count加1
+    - 强引用代表如何共享Rc<T>实例的所有权，但若引用并不属于所有权关系，不会造成引用循环，因为任何弱引用的循环会在其相关的强引用计数为0被打断。
+    - 因为Weak<T>引用的值可能已经被丢弃，为了使用weak<T>所指向的值，我们必须确保其值仍然有效。为此可以调用weak<T>实例的upgrade方法，这会返回Option<RC<T>>
+    - 如果Rc<T>值还未被丢弃，返回some
+
+## 创建树形数据结构：带有子节点Node
+- node 拥有其子节点，同时西塘通过变量共享所有权，Rc<Node>, Vec<T>
+    - 修改其他节点的子节点 Vec<Rc<Node>> 放入RefCel<T>
+- 增加子到父的引用
+    - 为了让子节点知道父节点增加parent字段，
+    - parent类型？不要引用循环
+        - 父节点应该拥有其子节点，
+        - 如果父节点被丢弃了，其子节点也应该被丢弃，然而这个子节点不应该包含父节点
+        - 如果子节点丢弃，父节点仍然存在，这就是弱引用
+        - RefCell<Weak<Node>>

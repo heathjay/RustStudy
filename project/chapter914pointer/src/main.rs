@@ -93,7 +93,7 @@ fn main() {
 */
 
 
-    let a = Rc::new(Cons(4, Rc::new(Cons(10,Rc::new(Nil)))));
+    let a = Rc ::new(Cons(4, Rc::new(Cons(10,Rc::new(Nil)))));
     println!("count a= {}",Rc::strong_count(&a));
     let b = Cons(3, Rc::clone(&a));
     println!("count b= {}",Rc::strong_count(&a));

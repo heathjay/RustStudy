@@ -79,6 +79,14 @@ mod tests{
     impl Messager for MockMessager{
         fn send(&self, message: &str){
             self.sent_messages.borrow_mut().push(String::from(message));
+            /**
+             * 不允许我们在运行时这么做
+             * let mut one_borrow = self.sent_messages.borrow_mut();
+             * let mut two_borrow = self.sent_messages.borrow_mut();
+             * 
+             * one_borrow.push(String::from(message));
+             * two_borrow.push(String::from(message));
+             */
         }
     }
 
