@@ -1409,3 +1409,59 @@ atomic/ atomically reference counterd
     - 手动实现send和sync时不安全的，
 - 通常需要crate，
 
+
+
+
+# Rust的面向对象特性
+
+## 面向对象语言特性
+- 对象包含数据和行为
+- 结构体和枚举包含数据而impl提供了结构体和枚举之上的方法。
+### 封装隐藏了实现细节
+- 对象编程相关，对象的实现细节不能被使用对象的代码获取，唯一与对象交互的方式是通过对象提供的公有api。
+- 默认私有化，pub可以
+### 继承作为类型系统与代码共享
+- inheritance：一个对象可以定义为继承另一个对象的定义使其可以获得父结构的数据和行为，而无需重新定义
+- rust没有，但提供了解决方法
+    - 选择继承有两个主要的原因：重用代码，可以用trait
+    - 子类对象可以用于父类被使用的地方，被称为多态polymorphism；可以进行泛型编程
+
+## 为使用不同类型的值而设计的trait对象
+- 克服ector只能存储同种类型号元素的局限，
+- 可以提供一个定义SpreadsheetCell枚举来存储整形，浮点型和文本成员的替代方案。可以在单元中存储不同类型的数据，
+- 设计一个gui
+### 定义通用行为的trait
+- 定义一个Draw trait，其中包含名为draw的方法
+- 接着定义一个存放trait对象的vector。trait对象值西那个一个实现了我们指定trait的类型的实例，以及一个用于在运行时查找该类型的trait方法的表
+- 可以使用trait对象替代泛型或具体类型，任何使用trait对象的位置
+- 不能向trait对象增加数据
+- trait对象则允许在运行时替代多种具体类型，泛型智能一次智能替代一个具体类型
+pub struct Screen{
+    pub components:Vec<Box<dyn Draw>>,
+}
+impl Screen{
+    pub fn run(&self){
+        for component in self.components.iter(){
+            component.draw();
+        }
+    }
+}
+
+/**
+ * 泛型和trait bound
+ */
+/*
+pub struct Screen<T: Draw>{
+    pub components: Vec<T>,
+}
+
+impl<T> Screen<T>
+    where T:Draw{
+        pub fn run(&self){
+            for component in self.components.iter(){
+                component.draw();
+            }
+        }
+    }
+*/
+- 倾向于使用trait对象，一个Screen实例可以存放一个既能包含Box<Button>也能包含Box<TextField>
