@@ -1465,3 +1465,303 @@ impl<T> Screen<T>
     }
 */
 - 倾向于使用trait对象，一个Screen实例可以存放一个既能包含Box<Button>也能包含Box<TextField>
+### 实现trait
+- 增加类型
+- 实现trait和方法
+- 只关心值所反映的信息而不是具体类型-类似于动态类型语言中的鸭子类型duck typing：如果走起来像一只鸭子，叫起来也是就是
+- run不需要知道每个组件的具体类型是什么，通过Box<dyn Draw>作为component vector中的值，定义了screen为需要可以在其上调用draw方法的值
+
+### trait对象执行动态分发
+- 对于泛型使用trait bound 时编译器进行单态化处理：
+    - 编译器为每一个被泛型类型参数替代的具体类型生成非泛型的函数和方法实现
+    - 单态化产生的代码进行静态分发 static dispatch:编译的时候就知道了
+    - 动态分发dynamic dispatch相对
+    - 使用Trait对象，必须动态分发，编译器无法知道所有可能用于trait对象代码的类型。所以不知道调用哪个类型的那个方法实现，
+    - 通过调用指针知道
+### trait对象要求对象安全
+- object safe的trait才可以组成trait对象，
+- 两条规则：
+    - 返回值类型不为self
+    - 方法没有任何泛型类型参数
+    - trait对象忘记了其真正的类型，方法不能使用已经被忘记的self类型
+    - 同理对于泛型类型的参数，当trait时放入具体的类型参数：此具体类型编程实现该trait类型的一部分当时用trait对象时其具体类型被抹去了
+    - 不安全的例子：clone trait
+    pub trait Clone{
+        fn clone(&self) -> Self;
+    } 
+
+# 面向对象设计模式的实现
+- 状态模式state pattern。关键在于一个值有某些内部状态，体现为一些列的状态对象，同时值的行为随着其内部状态而改变
+- 状态对象共享功能，每一个状态对象负责其自身行为。以及该状态如何转移另一个状态。持有一个状态对象的值对于不同状态的行为以及何时状态转移毫不知情
+
+## 发布博客的实现
+- 博文从空白开始
+- 草案完成。请求审核博文
+- 一旦博文过审，发表
+- 只有发表的博文会被打印，这样就不会意外打印没有被审核的博文的文本
+
+pub struct Post{
+    state: Option<Box<dyn State>>,
+    content:String,
+}
+impl Post{
+    pub fn new()->Post{
+        state: Some(Box::new(Draft{})),
+        content:String::new(),
+    }
+}
+//定义了不同状态的博文所共享的行为
+trait State{
+}
+struct Draft{}
+
+impl State for Draft{}
+- add_text
+- 确保博文草案时空的
+-  fn request_review(self:Box<Self>) -> Box<dyn State>;
+    - self:Box<Self> 意味着这个方法调用只对这个类型的Box有效，获取了Box<Self>的所有权，使得老状态无效
+- 增加改变content行为的approve方法
+- 状态模式的权衡取舍
+    - 要找到所有已发布博文的不同行为只需要查看published的state trait实现
+    - 如果创建一个不是用状态模式的替代实现。可能在post的方法中甚至于main中甬道match，需要看更多位置才能理解发布的博文的所有逻辑
+- 缺点：
+    - 状态间实现了状态转换，相互联系，
+    - 重复逻辑，
+    - post
+- 进行改进：
+ 
+# 模式用来匹配值的结构
+- 模式是rust中特殊的语法，他用来匹配类型的结构。
+- 结合使用模式和match表达式以及其他结构可以提供更多对程序控制流的支配权。
+- 模式：
+    - 字面值
+    - 解构的数组、枚举、结构体或者元组
+    - 变量
+    - 通配符
+    - 占位符
+- 这些描述了我们需要处理的数据形状接着可以用其匹配值来决定程序是否拥有正确的数据来运行特定部分的代码
+## 所有可能用到模式的地方
+- match分支
+match value{
+    Pattern => expression,
+
+}
+    - 必须穷尽，所有值都必须被考虑到，
+
+## if let 条件表达式
+- 等同于只关心一个情况match语句简写的。
+## while let 条件循环
+- 允许只要模式匹配就一直进行while循环
+let mut stack = Vec::new();
+stack.push(1);
+stack.push(2);
+stack.push(3);
+//一旦none就是退出
+while let Some(top) = stack.pop(){
+    println!("top is {}", top);
+}
+## for 循环
+- 模式是for关键字直接跟随的值
+- 如for x in y中的x
+let v = vec!['a','b','c'];
+for (index, value) in v.iter().enumerate(){
+    println!("{} is at index.", value, index);
+}
+
+## let 语句
+let x = 5;
+- 正式的是:
+let Pattern = Expression;
+- x是整个模式。这个模式实际上将任何值绑定到变量x，不管值是什么
+let (x, y ,z ) = (1, 2, 3);
+- 比较值1,2,3和x,y,z并发现此值匹配这个模式
+- 如果希望忽略元组中一个或多个值，也可以使用_或这..,如忽略模式中的值部分所示，如果问题是模式中有太多的变量，则解决方法是通过去掉变量使得变量数与元组中元素数相等
+
+## 函数参数
+- 也可以是模式
+fn foo(x:i32){}
+- x部分就是模式
+fn print_coordinates(&(x,y) : &(i32, i32)) {
+    println!("current location:{} , {}", x, y);
+}
+fn main(){
+    let point = (3,5);
+    print_coordinates(&point);
+}
+- 值&(3,5)匹配模式&(x,y)
+- 闭包类似于函数，也可以在闭包参数列表中使用模式，
+- 不过模式在每个使用它的地方并不以相同的方式工作，在一些地方，模式必须是irrefutable的，意味着他们必须匹配所提供的任何值
+- 在另一些情况。他们则可以使用refutable的。
+
+## refutability 可反驳性，模式是否会匹配失效
+- 对某些可能的值进行匹配会失败的模式被称为是可反驳的refutable
+if let Some(x) = a_value{...}
+- if let和while let 表达式被限制为只能接受可反驳的模式，因为根据定义他们在处理可能的失败
+- 熟悉可反驳的概念
+## irrefutable 不可反驳性
+- 能匹配任何传递的可能值的模式被称为是不可反驳的irrefutable
+- let x = 5; //x可以匹配任何值所以不可能失败
+- 函数参数，let语句和for循环只能接受不可反驳的模式，因为通过不匹配的值程序无法进行有意义的工作，
+- 为了修复在需要不可反驳模式的地方使用可反驳模式的情况，可以修改使用模式的代码：
+    - 不同于使用let，可以使用if let。如果模式不匹配，大括号中的代码将被忽略，其余代码保持有效
+## 所有模式语法
+### 匹配字面值
+let x = 1;
+match x{
+    1 => println!("one"),
+    2 => println!("two");
+    _ => println!("anything");
+}
+### 匹配命名变量
+- 命令变量是匹配任何值的不可反驳模式
+- match会开始一个新的作用域。match表达式作为模式的一部分生命的变量会覆盖match结构之外的同名变量
+    let x = Some(5);
+    let y = 10;
+
+    match x{
+        Some(50) => println!("got 50"),
+        Some(y) => println!("matched, y = {:?}",y),
+        _ => println!("default case x ={:?}",x),
+    }
+    - match第二个匹配分支引入新的变量y，他会匹配Some中的任何值，结束后作用域结束，
+- 多个模式
+    - 在match表达式中，可以使用|语法匹配多个模式，它代表或or
+        let x = 1;
+    match x{
+        1|2 => println!("one or two"),
+        3 => println!("three"),
+        _ => println!("anything"),
+    }
+- 通过..=匹配值的范围
+..=允许匹配一个闭区间范围内的值，
+    match x{
+        1..=5 =>println!("one through five"),
+        _=>println!("something else"),
+    }
+    // x 是1，2，3，4，5第一个分支就会匹配
+    - 只允许数字和char类型
+    match x{
+
+    }
+## 解构并分解值
+- 可以使用模式来结构结构体、枚举、元组和引用
+    //解构结构体
+    let p = Point{x:0,y:8};
+    let Point{x:a,y:b} = p;
+    assert_eq!(0,a);
+    assert_eq!(8,b);
+    //变两名匹配字段名
+    let Point{x,y}= p;
+    //简写，写出字段名称。模式创建的变量会有相同的名称
+    assert_eq!(0,x);
+- 允许部分解构
+    - 分成三部分：直接位于x轴上，此y=0真，位于y轴，或者不再任何轴点上
+        match p{
+        Point{x, y : 0} => println!("on the x axis at {}",x),
+        Point{x : 0,y} => println!("on the y axis at {}", y),
+        Point{x,y} => println!("on neither axis:{} {}", x, y),
+    }
+- 结构枚举
+enum Message{
+    Quit,
+    Move{x:i32, y:i32},
+    Write(String),
+    ChangeColor(i32, i32, i32),
+}
+    let msg = Message::ChangeColor(0,160,255);
+    match msg{
+        Message::Quit =>{
+            println!("quit");
+        }
+        Message::Move{x,y} =>{
+            println!("move :{} {}", x,y);
+        }
+        Message::Write(text) => println!("text:{}",text),
+        Message::ChangeColor(r,g,b) => println!("r,g,b ={} {} {}",r,g,b),
+    }
+
+- 解构嵌套的结构体和枚举
+enum Message{
+    Quit,
+    Move{x:i32, y:i32},
+    Write(String),
+    ChangeColor(Color),
+}
+
+enum Color{
+    Rgb(i32,i32,i32),
+    Hsv(i32,i32,i32),
+}
+    let msg = Message::ChangeColor(Color::Hsv(0,160,255));
+    match msg{
+        Message::ChangeColor(Color::Hsv(h,s,v))=>println!("hsv:{},{},{}",h,s,v),
+        Message::ChangeColor(Color::Rgb(r,g,b)) => println!("rgb:{},{},{}",r,g,b),
+        _ => ()
+    }
+
+- 解构结构体和元组
+一个复杂的解构体例子，其中结构体和元组嵌套在元组中，并将所有的原始类型解构出来：
+let ((feet, inches), Point{x,y}) = ((3,10), Point{x:10,y:-19});
+- 模式解构可以部分
+- 忽略模式中的值
+    _, 使用一个以下划线开始的名称，
+    ..忽略所剩部分的值，
+- 用_忽略整个值
+fn foo(_:i32, y:i32){
+    println!("This code only uses the y parameter: {}", y);
+}
+- 使用嵌套_忽略部分值
+    let numbers = (2, 4, 8, 16, 32);
+    match numbers {
+        (first, _, third, _, fifth) => {
+            println!("Some numbers: {}, {}, {}", first, third, fifth)
+        },
+    }
+- 通过在名字前以一个下划线开头来忽略未使用的变量
+    - 不要警告未使用的变量，为此可以使用下划线作为变量的开头
+        //以_为开头
+    let s = Some(String::from("hello"));
+    /*
+    if let Some(_s) = s{
+        println!("found a string");
+    }
+    //s的值仍然会移动到_s，并阻止我们再次使用s，然后只使用_，并不会绑定值
+    //println!("{:?}",s);
+    */
+
+    if let Some(_) = s{
+        println!("found a string");
+    }
+    println!("{:?}",s);
+
+- 用..忽略剩余值
+    - 对于有多个部分的值，可以使用..语法来只使用部分并忽略其他值，同时避免不得不每一个忽略值列出下划线
+    struct Point{
+        x:i32,
+        y:i32,
+        z:i32
+    }
+
+    let origin = Point{x:0, y:0, z:0};
+    match origin{
+        Point{x,..} =>println!("x is {}",x);
+    }
+
+    - 或者
+    let numbers = (2, 4, 8, 16, 32);
+    match numbers{
+        (first,..,last) => println!("some numbers:{}, {}",first, last);
+    }
+    - 不能有歧义，(.., second, ..); 会错
+
+- 匹配守卫提供的额外条件
+    - 匹配守卫: match guard指定于match分支模式之后的额外if条件，它必须被满足才能选择此分支，
+    - 匹配守护用于表达比单独的模式所能允许的更为复杂的情况
+        let num = Some(4);
+    match num{
+        Some(x) if x < 5 => println!("less than five: {}", x),
+        Some(x) => println!("{}",x),
+        None => ()
+    }
+- @ 绑定
+    - 允许我们创建一个存放值的变量的同时测试其值是否匹配模式
