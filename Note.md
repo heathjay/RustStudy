@@ -1765,3 +1765,167 @@ fn foo(_:i32, y:i32){
     }
 - @ 绑定
     - 允许我们创建一个存放值的变量的同时测试其值是否匹配模式
+
+
+# 高级特征
+- 不常见但很有用
+## 不安全Rust
+- 编译时都会强制执行的内存安全保证，
+- 隐藏第二种语言，它不会强制执行这类内存安全保证：不安全rust
+- unsafe rust
+- 如果rust强制安全，有部分操作无法进行
+- 底层计算机硬件故有的不安全性，如果rust不允许进行不安全操作，那么有些任务根本完成不了，
+### 不安全的超级力量
+- 通过unsafe关键字来切换成不安全Rust，可以开启一个新的存放不安全代码块
+- 5类可以在不安全的rust中执行而不能在安全的rust操作:
+    - 解引用裸操作
+    - 调用不安全的函数或方法
+    - 访问或修改可变静态变量
+    - 实现不安全trait
+    - 访问union的字段
+- 并不会关闭其他rust安全检查：如果在不安全代码中使用引用。它仍然会被检查。unsafe关键字值是提供了那五个不会被编译器就爱你茶内存安全的功能。
+- 作为程序员要确认unsafe代码以有效的方式访问内存
+- 保持unsafe足够小
+
+### 解引用裸指针
+- 不安全rust有两个被称为裸指针raw pointer的类似于引用的新类型，和引用一样，裸指针是可变或者不可变的，
+- *const T 和 *mut T.这里的星号不是解引用运算符
+- 它是类型名称的一部分，在裸指针的上下文中，不可变意味着指针解引用之后不能直接赋值
+- 与引用和智能指针的区别在于，裸指针：
+    - 允许忽略借用规则，可以同时拥有不可变和可变的指针，或多个指向相同位置的可变指针
+    - 不保证指向有效的内存
+    - 允许为空
+    - 不能实现任何自动清理功能
+- 通过去掉Rust强加的保证，可以放弃安全保证以换取性能或使用另一个语言或硬件接口的能力，此时rust的保证并不适用
+- 创建如何从引用同时创建不可以便和可变裸指针
+    let mut num = 5;
+    let r1 = &num as *const i32;
+    let r2 = &mut num as *mut i32;
+    unsafe{
+        println!("r1 is: {}", *r1);
+        println!("r2 is : {}", *r2);
+    }
+- 通过引用创建裸指针
+- 可以在安全代码中创建裸指针，值是不能在不安全块之外解引用裸指针
+- 这里使用as将不可变和可变引用强转为对应的裸指针，因为直接从保证安全的引用来创建他们，可以知道这些特定的裸指针
+- 展示如何创建一个指向任意内存地址的裸指针，尝试使用任意内存是未定义行为：此地址可能有数u也可能没有，编译器可以优化掉这个内存访问，或者程序可能会出现段错误segmentation fault
+    let address = 0x012345usize;
+    let r = address as *const i32;
+- 创建一个指针不会造成任何危险，只有访问其指向的值才可能遇到无效的值。
+- 通过裸指针，就能同时创建同一地址的可变指针和不可变指针，若通过可变指针修改数据，则可能潜在造成数据竞争。
+- 主要应用场景就是调用c代码接口，另一个场景就是构建借用检查其无法理解的安全抽象的例子
+
+### 调用不安全函数或方法
+- 使用不安全块的操作是调用不安全函数。不安全函数和方法与常规函数方法十分类似。除了其开头有一个额外的unsafe
+- 不安全函数体也是有效的unsafe块，所以在不安全函数中进行另一个不安全操作时无需增加额外的unsafe块
+### 创建不安全代码的安全抽象
+- 仅仅因为函数包含不安全代码并不意味着整个函数都需要标记为不安全的。
+- 将不安全代码封装进安全函数是一个常见的抽象。
+- 一个安全函数定义于可变slice值上，他获取一个slice并从给定的索引参数开始将其分为两个slice。
+- 将split_at_mut实现为函数而不是方法，并只处理i32值而非泛型T的slice
+fn split_at_mut(slice: &mut [i32], mid:usize) -> (&mut [i32], &mut [i32]){
+    let len = slice.len();
+    assert!(mid<= len);
+    (&mut slice[..mid], &mut slice[mid..])
+}
+- rust的借用检查器不能理解我们要借用这个slice的两个部分，它只知道我们借用了同一个slice两次，本质上借用slice的不同部分时可以的，因为不重叠
+use std::slice;
+fn split_at_mut(slice:&mut [i32], mid:usize) ->(&mut [i32], &mut [i32]){
+    let len = slice.len();
+    let ptr = slice.as_mut_ptr();
+    assert!(mid <= len);
+    unsafe{
+        (slice::from_raw_parts_mut(ptr,mid),
+        slice::from_raw_parts_mut(ptr.add(mid), len - mid)
+        )
+    }
+}
+- as_mut_ptr方法访问slice的裸指针，返回一个*mut i32
+- 获取一个裸指针和一个长度来创建一个slice.
+- add放入unsafe块中，确认地址偏移
+
+
+### 使用extern 函数调用外部代码
+- 有助于创建和使用外部函数接口foreign function interface.
+- 允许不同或外部编程语言调用函数
+- extern块中声明的函数在rust代码中总是不安全的。因为其他语言不会强制执行rust规则并且rust无法检查他们所以确保其安全是
+- 在extern "C"块中，列出了我们希望能够调用的另一个语言中的外部函数的签名和名称。
+- "C" 部分定义了外部函数所使用的应用程序接口application binary interface，定义了如何在汇编语言层面调用此函数。
+- "C" ABI是最常见的，
+### 从其他语言调用rust函数
+- 不同于extern块，就在fn关键字之前增加extern关键字并指定所用到的ABI，还需要增加#[no_mangle]追俄，
+- mangling发生于当编译器将我们指定的函数名修改为不同的名称时，这会增加用于其他编译过程的额外信息，不过会使名称更加难以阅读
+- 一旦其编译为动态库并从c语言中连接，call_from_c函数就在能够在c代码中访问：
+#[no_mangle]
+pub extern "C" fn call_from_c(){
+    println!("just called a rust function from c!");
+}
+
+### 访问或修改可变静态变量
+- 全局变量对于rust是一个问题，不过所有权规则说是有问题的。如果两个线程访问相同的可变全局变量，则可能会造成数据竞争。
+- 全局变量在rust称为静态变量static，
+- 静态变量必须标注变量的类型
+static HELLO_WORLD : &str = "hello, world";
+- 只能用'static生命周期，固定内存地址，使用这个值总会访问相同的地址另一方面，常量则允许在任何被用到的时候复制其数据。
+- 访问和修改可变静态变量都是不安全的。
+static mut COUNTER:u32 = 0;
+fn add_to_count(inc:u32){
+    unsafe{
+        COUNTER += inc;
+    }
+}
+    add_to_count(3);
+    unsafe{
+        println!("{}",COUNTER);
+    }
+- 加上mut
+- unsafe块加入
+- 多线程容易数据竞争，
+
+### 实现不安全的trait
+- 当至少有一个方法中包含编译器不能验证的不可变时，trait是不安全的，可以在trait之前增加unsafe关键字将trait声明为unsafe
+unsafe trait Foo{
+    //methods go here
+}
+unsafe impl Foo for i32{
+
+}
+- Sync和Send标记trait，编译器会自动为完全由Send和Sync类型组成的类型自动实现他们。
+- 如果实现了一个包含了一些不是Send或Sync的类型，并希望将此类标记为Send或Sync，则必须使用unsafe。
+
+### 访问联合体中的字段
+- union和struct类似，
+- 一个实例中同时只能使用使用一个声明的字段，
+- 联合体主要用于和C代码的联合体交互，访问联合体的字段是不安全的，因为rust无法保证当前存储在联合体实例中数据的类型
+### 何时使用不安全代码
+- 使用unsafe来进行这五个操作之一是没问题的，
+- 不过使得unsafe代码正确也实属不易
+- 因为编译器不能帮助保证内存安全。
+- 当有理由使用unsafe代码时，是可以这么做的，通过使用显式的unsafe标注使得在出现错误时易于追踪问题的源头。
+
+## 高级trait
+### 关联类型在trait定义中指定占位符类型
+- associated types-关联类型，是一个将类型占位符和trait相关联的方式，这样trait的方法签名中就可以使用这些占位符类型了
+- 带有关联类型来替代遍历的值的类型，
+pub trait Iterator{
+    type item;
+    fn next(&mut self) -> Option<Self::Item>;
+}
+
+impl Iterator for Counter{
+    type Item = u32;
+    fn next(&mut self) -> Option<Self::Item>
+}
+- Item就是一个占位类型，同时next方法定义表明他返回Option<Self::Item>类型的值，
+- 这个trait的实现者指定了Item类型，然而不管实现者指定何种类型，next方法都会返回一个包含了此具体类型值的Option
+- 关联类型看起来像一个泛型的概念，它允许定一个函数而不指定可以处理的俄类型
+- 为什么不进行泛型?
+pub trait Iterator<T>{
+    fn next(&mut self) -> Option<T>{}
+}
+- 如果使用泛型的话，则不得不在每一个实现中标注类型，这是因为我们也可以实现Iterator<String> for counter,
+- 或其他类型，当trait具有泛型参数的时候，可以多次实现这个trait，每次需要改变泛型参数的具体类型，
+- 接着如果使用Counter的next方法时，必须提供类型注解来表明希望使用Iterator的哪一个实现。
+- 通过关联类型，则无需标注类型因为不能多次实现这个trait。我们只能使用选择一次Item会是什么类型，因为只能有一个impl Iterator for Counter
+- 当调用Counter的next时不必每次指定我们需要u32值的迭代器
+
