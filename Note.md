@@ -1929,3 +1929,362 @@ pub trait Iterator<T>{
 - 通过关联类型，则无需标注类型因为不能多次实现这个trait。我们只能使用选择一次Item会是什么类型，因为只能有一个impl Iterator for Counter
 - 当调用Counter的next时不必每次指定我们需要u32值的迭代器
 
+### 默认泛型类型参数和运算符重载
+- 当使用泛型类型参数时，可以为泛型指定一个默认的具体类型，如果默认类型就足够的话，这消除了为具体类型实现trait的需求
+- 运算符重载operator overloading- 并不允许但是std::ops中所列出的运算符和相应的trait可以通过实现运算符相关trait来重载
+use std::ops::Add;
+#[derive(Debug, PartialEq)]
+struct Point{
+    x : i32,
+    y : i32,
+}
+
+impl Add for Point{
+    type Output = Point;
+    fn add(self, other:Point) -> Point{
+        Point{
+            x:self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
+fn main() {
+    assert_eq!(Point{x : 1, y : 0} + Point{x:2, y:3}, Point{x:3,y:3});
+}
+
+- 这里默认泛型类型位于Add trait中，这里定义：
+trait Add<RHS=Self>{
+    type Output;
+    fn add(self, rhs:RHS) -> Self::Output;
+}
+- 这是一个带有一个方法和一个关联类型的trait
+- 尖括号RHS=Self这个语法叫默认类型参数default type parameter
+- RHS 泛型类型参数right hand side 缩写，它用于定义add方法中rhs参数
+- 如果实现add trait时不指定RHS的具体类型，RHS的类型将时默认的Self类型，也就是在其上实现add的类型。
+- 使用自定义类型
+use std::ops::Add;
+struct Millimeters(u32);
+struct Meters(u32);
+impl Add<Meters> for Millimeters{
+    type Output = Millimeters;
+    fn add(self, other:Meters) -> Millimeters{
+        Millimeters(self.0 + (other.0 * 1000))
+    }
+}
+- 默认参数类型主要用于如下两个方面：
+    - 扩展类型而不破坏现有代码
+    - 在大部分用户都不需要的特定情况进行自定义
+
+### 完全限定语法与消歧义：调用相同名称的方法
+- rust既不能避免一个trait与另一个trait拥有相同名称的方法，也不能阻止为同一类型同时实现这两个trait，甚至直接在类型上实现开始已经有的同名方法也是可能的
+    //调用相同名称的方法
+trait Pilot{
+    fn fly(&self);
+}
+
+trait Wizard{
+    fn fly(&self);
+}
+
+struct Human;
+impl Pilot for Human{
+    fn fly(&self){
+        println!("this is your captain speaking");
+    }
+}
+
+impl Wizard for Human{
+    fn fly(&self){
+        println!("Up!");
+    }
+}
+
+impl Human{
+    fn fly(&self){
+        println!("*waving arms furiously*");
+    }
+}
+    
+    
+    //直接调用
+    //直接调用实现在human的fly方法
+    let person = Human;
+    person.fly();
+
+    //用更明显的方法调用。
+    let person = Human;
+    Pilot::fly(&person);
+    Wizard::fly(&person);
+    person.fly();
+
+- 因为fly方法获取一个self参数，如果有两个类型都实现了同一个trait，Rust可以根据self的类型计算出应该使用哪一个trait实现
+- 关联函数是trait的一部分，但没有self参数，当同一作用域的两个类型实现了同一个trait，Rust就不能计算出我们期望哪一个
+- 除非使用完全限定语法fully qualified syntax。
+trait Animal{
+    fn baby_name() -> String;
+}
+
+struct Dog;
+
+impl Dog{
+    fn baby_name() -> String{
+        String::from("spot")
+    }
+}
+
+impl Animal for Dog{
+    fn baby_name() -> String{
+        String::from("pupy")
+    }
+}
+
+
+    println!("a bady dog is called a {}", Dog::baby_name());
+    /*
+    rust并不知道该使用哪一个实现
+    因为是关联函数而不是方法，没有self参数，会有编译错误
+    所以使用完全限定语法
+    println!("a bady dog is called a {}", Animal::baby_name());
+    */
+    println!("a bady dog is called a {}", <Dog as Animal>::baby_name());
+
+- 尖括号中向rust提供了类型注解，并通过在此函数调用中将Dog类型当作Animal对待，来指定希望调用的是Dog上Animal trait
+<Type as Trait>::function()
+
+### 父trait用于在另一个trait中使用某trait的功能
+- supertrait
+//父类trait
+use std::fmt;
+trait OutlinePrint: fmt::Display{
+    fn outline_print(&self){
+        let output = self.to_string();
+        let len = output.len();
+        println!("{}", "*".repeat(len +4));
+            println!("*{}*", " ".repeat(len+2));
+            println!("* {} *", output);
+            println!("*{}*", " ".repeat(len + 2));
+            println!("{}", "*".repeat(len + 4));
+    }
+}
+//必须实现这个才能让OutlinePrint应用到pointer上
+impl fmt::Display for Point{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result{
+        write!(f, "({},{})",self.x,self.y)
+    }
+}
+impl OutlinePrint for Point{}
+
+### newtype模式用以在外部类型上实现外部trait
+- 孤儿规则orphan rule，它说明只要trait或者类型对于当前crate是本地的话就可以实现该trait，一个绕开这个限制的方法是使用newtype模式。它涉及到一个元组解构题中创建一个新类型
+- 这个元组解构题带有一个字段作为希望实现trait类型的简单封装，接着这个封装类型对于crate是本地的，这样就可以在这个封装上是实现trait
+- 使用这个模式没有运行时性能惩罚
+- 如果想在vec上实现display，而孤儿规则组织我们这样直接作，因为display trait和vec都定义于我们的crate之外。可以创建一个包含vec实例的wrapper解构体
+
+//newtype
+struct Wrapper(Vec<String>);
+impl fmt::Display for Wrapper{
+    fn fmt(&self, f:&mut fmt::Formatter)->fmt::Result{
+        write!(f, "[{}]",self.0.join(", "))
+    }
+}
+   
+   
+    //newtype
+    let w = Wrapper(vec![String::from("hello"), String::from("world")]);
+    println!("w = {}", w);
+
+- Display的实现使用self.0来访问其内部的Vec<T>,因为Wrapper是元组结构体而Vec<T>是结构体宗位于索引0的项，
+- 因为Wrapper中Display的功能了
+- 缺点是Wrapper是一个新类型，没有定义于其值之上的方法；必须直接在Wrapper上实现所有方法
+
+## 高级类型
+- newtype模式可以用于静态的确保其值不被混淆
+- 和用来表示一个值的单元，
+- 另一个newtype模式的应用在于抽象了一些类型的实现细节
+- 隐藏内部泛型
+
+### 类型别名用来创建类型同义词
+- 类型别名type alias的能力，使用type关键字来给予现有类型另一个名字。
+type kilometers = i32;
+- 减少重复
+type Result<T> = std::result::Result<T, std::io::Error>;
+- 易于编写并在整个std::io中提供了一致的接口
+
+### 从不返回never type
+- rust有一个叫做!的特殊类型，empty type，因为它没值，倾向于称为never type.
+- 在函数从不返回的时候当返回值
+fn bar() -> !{
+
+}
+- 从不返回，发送函数
+let guess: u32 = match guess.trim().parse(){
+    Ok(num) => num,
+    Err(_) => continue,
+}
+- continue - !
+- 描述!的行为的正式方式是never type可以强转为任何其他类型，允许match的分支以continue结束因为continue并不真正返回一个值；相反它把控制权交回上层循环
+- nevertype 另一个用途是panic！
+impl<T> Option<T>{
+    pub fn unwrap(self) -> T{
+        match self{
+            Some(v)=>v,
+            None => panic!("called option::unwrap()"),
+        }
+    }
+}
+
+### 动态大小类型和sized trait
+- 需要知道例如应该为特定类型的值分配多少空间这样的信息其类型系统的一个特定的角落可能令人迷惑：这就是动态大小类型，dynamically sized types.
+- unsized types,这些类型允许我们处理只有在运行时才知道大小的类型
+- str
+- 只有运行时我们都不知道字符串有多长，因为直到运行时都不能知道大小，也就意味着不能创建str类型的变量，也不能获取str类型的参数
+- let s1: str= "hello there!"//这个不能工作
+- 虽然&T是一个存储了T所在的内存位置的单个值，&str是两个值，长度和地址，在编译时间就知道大小usize两倍。
+- 常规用法：他们有一些额外的元信息来存储动态信息的大小，
+- 必须将动态大小类型的值在某种指针之后
+- 可以将str和所有类型的指针结合:比如Box<str>或者Rc<str>
+- 为了将trait用于trait对象，必须将他们放在值镇之后比如 &dyn Trait 或者Box<dyn Trait>
+- 有一个特定的trait来决定一个类型的大小是否在编译时间时可知：sized trait，这个trait自动为编译器在编译时就知道大小的类型实现，
+- 另外rust隐式地为每一个泛型函数增加了sized bound
+fn generic<T>(t:T){
+
+}
+fn generic<T:Sized>(t:T){}
+- 泛型函数默认只能用于在编译时已知大小的类型，然而可以使用如下方法来放宽这个限制
+fn generic<T:?Sized>(t：&T)
+- ?Sized trait bound与sized相对，也就是说，它可以读作T可能也可能不是Sized
+
+### 高级函数和闭包
+### 函数指针
+- 也可以向函数传递常规函数，希望传递已经定义的函数而不是重新定义闭包作为参数是很有用的
+- 通过函数指针可以将函数作为参数给了另一个函数
+- fn被称为函数指针function pointer
+- 不同于闭包，fn是一个类型而不是一个trait，所以直接指定fn函数而不是声明一个带有Fn作为trait bound的泛型参数
+- 函数指针实现了所有三个闭包trait(Fn, FnMut和FnOnce)
+- 所以总可以在调用期望闭包的函数时传递函数指针作为参数，参数于编写使用泛型和闭包trait的函数，这样他就能接受函数或闭包作为参数
+- 一个只期待接受fn而不接受闭包的情况的例子与不存在闭包的外部代码交互时：C语言的函数可以接受函数作为参数，但c语言没有闭包
+- 作为一个既能使用内联定义的闭包又可以使用命名函数的例子，
+let list_of_numbers = vec![1,2,3];
+let list_of_strings = Vec<String> = list_of_numbers.iter().map(|i| i.to_string()).collect();
+- 或者可以将函数作为map的参数来代替闭包
+let list_of_numbers = vec![1,2,3];
+let list_of_strings = Vec<String> = list_of_numbers.iter().map(ToString::to_string).collect();
+- 这里必须使用高级trait部分讲到的完全限定语法，因为存在多个叫做to_string函数，
+- 另一个实用的模式暴露了元组结构体和元组结构枚举成员的实现细节，这些项使用()作为初始化语法，同时返回i由参数构造的实例的函数，实现了闭包trait的函数指针，
+enum Status{
+    Value(i32)，
+    Stop,
+}
+let list_of_statuses: Vec<Status>{
+    (0u32..20)
+.map(Status::Value)
+.collect();
+}
+
+### 返回闭包
+- 闭包表现为trait，这意味着不能直接返回闭包。对于大部分需要返回trait的情况，可以使用实现了期望返回的trait的具体类型来替代函数的返回值。
+- 因为他们没有一个可返回的具体类型，
+- 不知道多少空间来存储闭包
+fn returns_closure()->Box<dyn Fn(i32)->i32>{
+    Box::new(|x|x+1)
+}
+
+## 宏
+- 声明宏
+- 使用宏
+- 三种过程宏
+    - 自定义宏#[derive]宏在结构体和枚举上指定通过derive属性添加的代码
+    - 类属性attribute宏定义可用于任意项的自定义属性
+    - 类函数宏看起来像函数不过作用于作为参数传递的token
+## 宏和函数的区别
+- 为其他代码而写的代码方式，元编程metaprogramming
+- 宏只接受一个可变参数：用一个参数调用println!
+- 编译器编译前展开，
+- 可以在一个给定类型上实现trait
+- 而函数不幸，因为函数是在运行时被调用，同时trait需要在编译时实现
+- 宏定义复杂了，调用宏之前必须定义并将其引入作用域，而函数则可以在任何地方定义和调用
+
+## 使用macro_rules!的声明宏用于通用元编程
+- declarative macros
+- 核心概念时声明宏允许我们编写一些类似于rust match表达式的代码，
+- match 表达式时控制结构。其接收一个表达式，与表达式的结果进行模式进行比较
+- 这种情况下，该值是传递给宏的rust源代码字面值，模式用于和传递给宏的源代码进行比较。
+- 同时每个模式的相关代码则用于替换传递给宏的代码。所有这一切都发生在编译的时候。
+- 可以使用macro_rules!来定义宏，
+let v:Vec<u32> = vec![1,2,3];
+#[macro_export]                                 //注解说明宏应该是可用的，如果没有这个注解，可能这个宏不会被引入
+macro_rules! vec{                               // macro_rules! + 名称，所定义的宏并不带感叹号
+    ($($x : expr), *) =>{                       //$通过替代代码捕获了符合括号内模式的值， * 零个或多个
+        {
+            let mut temp_vec = Vec::new();
+            $(
+                temp_vec.push($x);
+            )*
+            temp_vec
+        }
+    };
+}
+- 一个vec!宏定义的简化版本
+- 后面可以用macro关键字的声明宏
+### 用于从属性生成代码的过程宏procedural macros
+- 更像函数，
+- 接受rust代码作为输入，
+- 在这些代码上进行操作，然后产生另一些代码作为输出，而非ie像声明式宏那样匹配对应模式然后以另一部分替代当前代码
+- 当创建过程宏时，其定义必须位于一种特殊类型的属于他们自己的crate中，
+use proc_macro;
+#[some_attribute]
+pub fn some_name(input: TokenStream) -> TokenStream{}
+- 包含一个函数，宏所处理的源代码组成了输入TokenStream,同时宏产生的代码时输出TokenStream
+- 最后，函数上有一个属性，这个属性表明过程宏的类型，在同一个crate中可以有多种的过程宏
+
+### 如何编写自定义derive宏
+- 创建一个hello_macro crate，其包含名为HelloMacro的trait和关联函数hello_macro。
+- 不同于让crate的用户为其每一个类型实现HelloMacro trait，
+- 程序员可以通过正常调用：
+use hello_macro::HelloMacro;
+use hello_macro_derive::HelloMacro;
+#[derive(HelloMa)]
+struct Pancakes;
+
+fn main(){
+    Pancakes::hello_macro();
+}
+
+
+pub trait HelloMacro{
+    fn hello_macro();
+}
+
+- 我们无法为hello_macro函数提供一个能够打印实现了该trait的类型的名称的默认实现：rust没有反射的能力，因此其无法在运行时获取类型名，我们需要一个在运行时生成代码的宏。
+- 下一步定义宏，必须在自己的crate中，在hello_macro目录下创建
+- 如果改变hello_macro中定义的trait，同时必须改变hello_macro_derive中实现的过程式宏，这两个包需要同时发布，
+- 如果要使用。同时添加，
+- 为定义一个冲程宏
+-proc_macro crate
+是编译器用来读�和操作我们 Rust 代码的 API。
+- syn crate ��符串中的 Rust 代码��成为一�可�操作的�据结�。 quote 则�
+syn ��的�据结��过来传�� Rust 代码中。
+- 当用户在一��型上指� #[derive(HelloMacro)] 时, hello_macro_derive ���
+��调用。��在于我们已经使用 proc_macro_derive �其指���对
+hello_macro_derive ��进行���� HelloMacro ,其�配� trait �,这是大�
+�过程���的习惯。
+
+
+
+### 类属性宏
+- 它允许你创建新的属性，更为灵活，可以用于其他项包括函数
+#[route(GET, "/“）]
+fn index(){}
+
+#[proc_macro_attribute]
+pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
+
+### 类函数宏
+��于 macro_rules! ,�们���更�活��
+�,可��受未知�量的��。�而 macro_rules! ���使用�前 “使用
+macro_rules! 的声明�用于�用元编程” �绍的��配的语��义
+let sql = sql!(SELECT * FROM posts WHERE id=1);
+
+#[proc_macro]
+pub fn sql(input: TokenStream) -> TokenStream {
