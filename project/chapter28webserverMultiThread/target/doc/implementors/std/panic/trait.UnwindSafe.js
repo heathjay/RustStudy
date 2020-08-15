@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["chapter28webserverMultiThread"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/std/panic/trait.UnwindSafe.html\" title=\"trait std::panic::UnwindSafe\">UnwindSafe</a> for <a class=\"struct\" href=\"chapter28webserverMultiThread/struct.ThreadPool.html\" title=\"struct chapter28webserverMultiThread::ThreadPool\">ThreadPool</a>","synthetic":true,"types":["chapter28webserverMultiThread::ThreadPool"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

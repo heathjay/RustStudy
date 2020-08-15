@@ -2288,3 +2288,288 @@ let sql = sql!(SELECT * FROM posts WHERE id=1);
 
 #[proc_macro]
 pub fn sql(input: TokenStream) -> TokenStream {
+
+
+
+
+# Web Server
+## 单线程web server
+- 协议
+    - 超文本传输协议hypertext transfer
+    - 传输控制协议transmission control protocol, TCP
+- 有客户端来初始化请求，服务端server监听请求并向客户端提供响应。
+- 监听tcp连接
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    for stream in listener.incoming(){
+        let stream = stream.unwrap();
+    }
+- 读取请求
+    fn handle_connection(mut stream: TcpStream){
+    let mut buffer = [0;512];   //开辟缓存512字节，[起始下标，大小]
+    stream.read(&mut buffer).unwrap();
+    println!("requests:{}!", String::from_utf8_lossy(&buffer[..]));
+}
+- 观察http请求
+- 编写响应
+    - HTTP-Version Status-Code Reason-Phrase CRLF
+    headers CRLF
+    message-body
+    - 状态行，status line,版本，数字状态码，HTTP/1.1 200 OK\r\n\r\n
+    fn handle_connection(mut stream: TcpStream){
+    let mut buffer = [0;512];   //开辟缓存512字节，[起始下标，大小]
+    stream.read(&mut buffer).unwrap();
+    let response = "HTTP/1.1 200 OK\r\n\r\n";
+    stream.write(response.as_bytes()).unwrap();
+    stream.flush().unwrap();
+    }
+    - flush会阻塞程序执行知道所有字节都被写入到连接里面
+    - 可能会失败
+- 返回真正的html
+    - 编写html
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <title>hello!</title>
+        </head>
+        <body>
+            <h1>
+                Hello!
+            </h1>
+            <p>hi from rust</p>
+        </body>
+    </html>
+    - 重写处理函数
+        let contents = fs::read_to_string("./hello.html").unwrap();
+        let response = format!("HTTP/1.1 200 OK\r\n\r\n{}",contents);
+- 验证请求并有选择的进行响应
+    - 增加在返回html文件前检查浏览器是否请求/，并在其请求任何其他内容返回错误的功能
+    - 404.html
+    http://127.0.0.1:7878/foo
+    fn handle_connection(mut stream: TcpStream){
+        let mut buffer = [0;512];   //开辟缓存512字节，[起始下标，大小]
+        stream.read(&mut buffer).unwrap();
+        let get = b"GET / HTTP/1.1\r\n";
+        if buffer.starts_with(get){
+            let contents = fs::read_to_string("./hello.html").unwrap();
+
+            let response = format!("HTTP/1.1 200 OK\r\n\r\n{}",contents);
+            stream.write(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        }else{
+            let status_line ="HTTP/1.1 404 NOT FOUND\r\n\r\n";
+            let contents = fs::read_to_string("404.html").unwrap();
+            let response = format!("{}{}",status_line,contents);
+            stream.write(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        }
+    }
+- 少量代码重构
+    fn handle_connection(mut stream: TcpStream){
+    let mut buffer = [0;512];   //开辟缓存512字节，[起始下标，大小]
+    stream.read(&mut buffer).unwrap();
+// println!("requests:{}!", String::from_utf8_lossy(&buffer[..]));
+    let get = b"GET / HTTP/1.1\r\n";
+    let (status_line, filename) = if buffer.starts_with(get){
+        ("HTTP/1.1 200 OK\r\n\r\n", "hello.html")
+    }else{
+        ("HTTP/1.1 404 NOT FOUND\r\n\r\n", "404.html")
+    };
+
+    let contents = fs::read_to_string(filename).unwrap();
+    let response = format!("{}{}",status_line,contents);
+    stream.write(response.as_bytes()).unwrap();
+    stream.flush().unwrap();
+}
+
+
+## 将单线程server变成多线程server
+- 使用线程池改进吞吐量: thread pool
+    - 以防拒绝服务denial of service, dos.
+pub struct ThreadPool;
+
+impl ThreadPool{
+    
+    pub fn new(size:usize) -> ThreadPool{
+        ThreadPool
+    }
+    pub fn execute<F>(&self, f:F) where F:FnOnce()+Send+'static
+    {
+
+    }
+}
+
+- 增加doc
+pub struct ThreadPool;
+
+impl ThreadPool{
+    ///创建线程池
+    /// 
+    /// 线程池中线程的数量
+    /// 
+    /// #Panics
+    /// 
+    /// `new` 函数在size为0会panic
+    /// 
+    pub fn new(size:usize) -> ThreadPool{
+        assert!(size > 0);
+        ThreadPool
+    }
+    pub fn execute<F>(&self, f:F) where F:FnOnce()+Send+'static
+    {
+
+    }
+}
+- 分配空间以存储线程
+    - 线程池线程数，就可以实际创建这些数据并在返回之前将他们存储在ThreadPool解构体，
+    pub fn spawn<F, T>(f: F) -> JoinHandle<T>
+    where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static
+- 如何存储一个线程
+    - 查看thread::spawn的声明
+    pub fn spawn<F, T>(f:F) -> JoinHandle<T> where F:FnOnce() + Send + 'static, T
+    - 返回JoinHandle<T>，其中T是闭包返回的类型，
+    use std::thread;
+    pub struct ThreadPool{
+        threads:Vec<thread::JoinHandle<()>>,
+    }
+        pub fn new(size:usize) -> ThreadPool{
+        assert!(size > 0);
+        let mut threads = Vec::with_capacity(size);
+        for _ in 0..size{
+            //create some threads and store thm in the vector
+        }
+
+
+        ThreadPool{
+            threads
+        }
+    }
+    - 用vec来存储threads::JoinHandle类型
+    - 频繁使用cargo check
+    - thread::spawn会马上执行，我们希望获得等待的线程，标准库没有，只能自己实现
+## 创建worker：线程并稍后发送代码
+- 每一个worker会存储一个thread::JoinHandle<()>实例,
+- 允许稍后发送代码，
+1. 定义worker结构体，存放id和JoinHandle<()>
+2. 修改ThreadPool存放一个Worker实例的vector
+3. 定义Worker::new函数，他获取一个id数字并返回一个带有id和用空闭包分配的线程和worker实例
+4. 在ThreadPool::new中，使用for循环计数生成id,使用这个id新建worker，并存储进入vector中
+    pub fn new(size:usize) -> ThreadPool{
+        assert!(size > 0);
+        let mut workers = Vec::with_capacity(size);
+        for id in 0..size{
+            //create some threads and store thm in the vector
+            workers.push(Worker::new(id))
+        }
+
+
+        ThreadPool{
+            workers
+        }
+    }
+    use std::thread;
+    pub struct ThreadPool{
+    //    threads:Vec<thread::JoinHandle<()>>,
+        workers:Vec<Worker>,
+    }
+    struct Worker{
+        id: usize,
+        thread: thread::JoinHandle<()>,
+    }
+
+    impl Worker{
+        fn new(id:usize) -> Worker{
+            let thread = thread::spawn(||{});
+            Worker{
+                id,
+                thread,
+            }
+        }
+    }
+
+## 使用通道向线程发送请求
+- 在execute获得期望执行的闭包,不过在创建ThreadPool的过程中创建每一个Worker时需要向thread::spawn传递一个闭包
+- 通道可以充当任务队列的作用，
+1. threadpool会创建一个通道并充当发送端
+2. 每一个worker会当作通道的接收端
+3. 新建一个Job结构体来存放用于向通道中发送的闭包
+4. execute方法会在通道发送端发出期望执行的任务
+5. 在线程中，Worker会遍历通道的接收端并执行任何接受到的任务
+pub struct ThreadPool{
+//    threads:Vec<thread::JoinHandle<()>>,
+    workers:Vec<Worker>,
+    //通道
+    sender: mpsc::Sender<Job>,
+}
+struct Job;
+    pub fn new(size:usize) -> ThreadPool{
+        assert!(size > 0);
+        let mut workers = Vec::with_capacity(size);
+        let (sender,receiver) = mpsc::channel();
+        for id in 0..size{
+            //create some threads and store thm in the vector
+            workers.push(Worker::new(id),receiver);
+        }
+
+
+        ThreadPool{
+            workers,
+            sender,
+        }
+    }
+    impl Worker{
+    fn new(id:usize,receiver:mpsc::Receiver<Job>) -> Worker{
+        let thread = thread::spawn(||{
+            receiver;
+        });
+        Worker{
+            id,
+            thread,
+        }
+    }
+    }
+- 一个receiver 传递给多个worker不可能，
+- 多生产者，单个消费者,rust通道模式
+- 所以我们希望在所有worker中共享单一receiver，在线程间发布任务。
+- 多进程共享所有权Arc<Mutex<T>>
+    fn new(id:usize,receiver:Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker{
+        let thread = thread::spawn(||{
+            receiver;
+        });
+        Worker{
+            id,
+            thread,
+        }
+    }
+}
+    pub fn new(size:usize) -> ThreadPool{
+        assert!(size > 0);
+        let mut workers = Vec::with_capacity(size);
+        let (sender,receiver) = mpsc::channel();
+
+        let receiver = Arc::new(Mutex::new(receiver));
+        for id in 0..size{
+            //create some threads and store thm in the vector
+//            workers.push(Worker::new(id,receiver));
+            workers.push(Worker::new(id,Arc::clone(&receiver)));
+        }
+
+
+        ThreadPool{
+            workers,
+            sender,
+        }
+    }
+
+## 实现execute
+- job 将是一个有着execute接收到的闭包类型的trait对象的类型别名
+type Job = Box<dyn FnOnce() + Send + 'static>;
+impl ThreadPool{
+    pub fn execute<F>(&self, f:F)
+        where F: FnOnce() + Send+ 'static{
+            let job = Box::new(f);
+            self.sender.send(job).unwrap();
+        }
+}
